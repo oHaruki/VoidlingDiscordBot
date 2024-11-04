@@ -67,4 +67,4 @@ async def get_votes(ctx, message_id: int):
     results_text = "\n".join([f"{item}: {', '.join(users)}" for item, users in results.items()])
     await ctx.send(f"Reaction results:\n{results_text if results_text else 'No votes yet!'}")
 
-bot.run("YOUR_DISCORD_BOT_TOKEN")
+bot.run("cA617_AO1B9L7BEWWJhxcjX5VgeoiMbg")
