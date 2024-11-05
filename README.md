@@ -1,4 +1,4 @@
-# Guild Member Discord Bot
+# Throne and Liberty Guild Bot
 
 ## Overview
 This bot is designed to manage and track guild members within a Discord server. It allows users to register their in-game information, including gear score, class, and weapons, and displays this information in an organized manner. Additionally, it provides statistics about guild members such as the average gear score and class distribution.
