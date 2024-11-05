@@ -1,6 +1,16 @@
 import discord
 from discord.ext import commands
-from collections import defaultdict
+from dotenv import load_dotenv
+import os
+
+# Load environment variables from the specified .env file
+load_dotenv("token.env")
+
+# Debugging: Print database environment variables to confirm they are loaded
+print("DB_HOST:", os.getenv("DB_HOST"))
+print("DB_USER:", os.getenv("DB_USER"))
+print("DB_PASSWORD:", os.getenv("DB_PASSWORD"))
+print("DB_NAME:", os.getenv("DB_NAME"))
 
 # Bot setup
 intents = discord.Intents.default()
@@ -8,63 +18,40 @@ intents.message_content = True
 intents.reactions = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# Dictionary to store item reactions
-item_reactions = defaultdict(list)
-
 @bot.event
 async def on_ready():
     print(f"Logged in as {bot.user}")
 
-@bot.command(name="post_drops")
-async def post_drops(ctx, *items):
-    # Check if the number of items is exactly 7
-    if len(items) != 7:
-        await ctx.send("Please provide exactly 7 items for the drop list.")
-        return
-
-    # Create embed message for items
-    embed = discord.Embed(
-        title="Weekly Guild Boss Drops",
-        description="React to the items you need!",
-        color=discord.Color.blue()
-    )
-
-    # Adding fields for each item
-    for i, item in enumerate(items, 1):
-        embed.add_field(name=f"Item {i}", value=item, inline=False)
-
-    # Send the embed message
-    message = await ctx.send(embed=embed)
-
-    # Adding reactions (use emoji numbers 1-7)
-    emoji_numbers = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣']
-    for emoji in emoji_numbers:
-        await message.add_reaction(emoji)
-
-    # Storing message ID and reactions for reference
-    item_reactions[message.id] = list(items)
-
-@bot.command(name="get_votes")
-async def get_votes(ctx, message_id: int):
-    # Retrieve the message based on ID
+    # Load the cogs
     try:
-        message = await ctx.fetch_message(message_id)
-    except discord.NotFound:
-        await ctx.send("Message not found. Please make sure the ID is correct.")
-        return
+        await bot.load_extension("cogs.drops")
+        print("Drops cog loaded successfully.")
+    except Exception as e:
+        print(f"Failed to load Drops cog: {e}")
 
-    # Collect reactions and users
-    results = defaultdict(list)
-    for reaction in message.reactions:
-        if reaction.emoji in ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣']:
-            users = await reaction.users().flatten()
-            item_index = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣'].index(reaction.emoji)
-            for user in users:
-                if user != bot.user:  # Exclude the bot itself
-                    results[item_reactions[message.id][item_index]].append(user.name)
+    try:
+        await bot.load_extension("cogs.guild_member_gear")  # Load the Guild Member Gear cog
+        print("Guild Member Gear cog loaded successfully.")
+    except Exception as e:
+        print(f"Failed to load Guild Member Gear cog: {e}")
 
-    # Format results
-    results_text = "\n".join([f"{item}: {', '.join(users)}" for item, users in results.items()])
-    await ctx.send(f"Reaction results:\n{results_text if results_text else 'No votes yet!'}")
+    try:
+        await bot.load_extension("cogs.guild_stats_command")  # Load the new Guild Stats cog
+        print("Guild Stats cog loaded successfully.")
+    except Exception as e:
+        print(f"Failed to load Guild Stats cog: {e}")
 
-bot.run("cA617_AO1B9L7BEWWJhxcjX5VgeoiMbg")
+    # Sync commands globally (for all servers the bot is in)
+    try:
+        await bot.tree.sync()
+        print("Commands synced globally.")
+    except Exception as e:
+        print(f"Failed to sync commands: {e}")
+
+    # Debug: Print all registered commands
+    print("Registered commands:")
+    for command in bot.tree.get_commands():
+        print(f"- {command.name}: {command.description}")
+
+# Run the bot using the token from .env file
+bot.run(os.getenv("DISCORD_BOT_TOKEN"))
