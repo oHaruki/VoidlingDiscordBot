@@ -2,7 +2,8 @@
 
 ## Overview
 
-The Throne and Liberty Discord Bot is designed to manage and track guild members within a Throne and Liberty-themed Discord server. It allows users to register in-game information such as gear score, class, and weapons, and displays this information in an organized manner. Additionally, it provides valuable features for guild management, including guild member statistics, boss tracking, and welcoming new members.
+The Discord Bot is designed to manage and track guild members within a the Discord server. It allows users to register in-game information such as gear score, class, and weapons, and displays this information in an organized manner. Additionally, it provides valuable features for guild management, including guild member statistics, Boss voting, and welcoming new members.
+It was mostly designed to fit our needs for the Guild "Voidling" , some features might have no use for you.
 
 ## Features
 
