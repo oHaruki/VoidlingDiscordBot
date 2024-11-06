@@ -7,6 +7,8 @@ It also has a built in Boss Timer + Reminder, for now it display not exact Boss 
 
 ## Features
 
+- **Boss Timer & Reminder**: Post a Embed to a channel with Boss Timer & Arcbhoss timer.
+- **Blessing Calculator**: Has a Calculator where you can find out if you if its worth buying blue traits or just instantly go for Purple.
 - **Add Guild Member Information**: Users can add or update their in-game details (gear score, class, weapons) using commands.
 - **Guild Member List**: Displays a list of all guild members with their information in a paginated format.
 - **Guild Statistics**: Provides stats such as the average gear score, class distribution, and popular weapon combinations.
