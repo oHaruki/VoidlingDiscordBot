@@ -1,4 +1,3 @@
-
 import discord
 from discord.ext import commands, tasks
 from discord import app_commands
@@ -19,7 +18,10 @@ DB_CONFIG = {
 class BossReminderCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.tz = pytz.timezone('Europe/Berlin')
+        self.tz = pytz.timezone('Europe/Berlin')  # Setting timezone to Europe/Berlin
+        self.last_boss_reminder_time = None  # Track last reminder for normal bosses
+        self.last_archboss_reminder_time = None  # Track last reminder for Archbosses
+        self.boss_reminder_task.start()
 
     def get_guild_settings(self, guild_id):
         try:
@@ -30,7 +32,7 @@ class BossReminderCog(commands.Cog):
                 result = cursor.fetchone()
                 return result
         except Error as e:
-            print(f"Error while connecting to MySQL: {e}")
+            print(f"[ERROR] Database connection failed: {e}")
         finally:
             if connection.is_connected():
                 connection.close()
@@ -48,32 +50,43 @@ class BossReminderCog(commands.Cog):
                     (guild_id, channel_id, role_id, channel_id, role_id)
                 )
                 connection.commit()
+                print(f"[INFO] Saved guild settings for guild {guild_id}.")
         except Error as e:
-            print(f"Error while saving guild settings to MySQL: {e}")
+            print(f"[ERROR] Failed to save guild settings: {e}")
         finally:
             if connection.is_connected():
                 connection.close()
 
+    def get_next_boss_time(self):
+        # Boss spawn times in Europe/Berlin timezone (original BST times)
+        now = datetime.now(self.tz)
+        daily_spawn_times = [12, 15, 19, 21, 0]  # Original BST/Europe/Berlin times for normal bosses
+        for hour in daily_spawn_times:
+            boss_time = now.replace(hour=hour, minute=0, second=0, microsecond=0)
+            if boss_time > now:
+                return boss_time, "Normal Boss"
+        next_day = now + timedelta(days=1)
+        next_boss_time = next_day.replace(hour=daily_spawn_times[0], minute=0, second=0, microsecond=0)
+        return next_boss_time, "Normal Boss"
+
+    def get_next_archboss_time(self):
+        # Archboss spawn times in Europe/Berlin timezone (originally 19:00 BST)
+        now = datetime.now(self.tz)
+        days_until_next_archboss = (2 - now.weekday()) % 7 if now.weekday() <= 2 else (5 - now.weekday()) % 7
+        next_archboss_day = now + timedelta(days=days_until_next_archboss)
+        next_archboss_time = next_archboss_day.replace(hour=19, minute=0, second=0, microsecond=0)  # 19:00 Europe/Berlin
+
+        # If today is Archboss day but after 19:00, move to the next spawn day
+        if next_archboss_time <= now:
+            next_archboss_time += timedelta(days=3 if next_archboss_time.weekday() == 2 else 4)
+        
+        return next_archboss_time, "Archboss"
+
     @app_commands.command(name="set_boss_channel", description="Set the channel and role for boss reminders.")
     @commands.has_permissions(administrator=True)
     async def set_boss_channel(self, interaction: discord.Interaction, channel: discord.TextChannel, role: discord.Role):
-        try:
-            self.save_guild_settings(interaction.guild.id, channel.id, role.id)
-            await interaction.response.send_message(f"Boss reminder channel set to {channel.mention} and role set to {role.mention}.")
-        except Exception as e:
-            await interaction.response.send_message("An error occurred while setting the boss channel.", ephemeral=True)
-            print(f"Error in set_boss_channel: {e}")
-
-    @commands.command(name="bosstest", help="Test the boss reminder feature.")
-    async def bosstest(self, ctx):
-        settings = self.get_guild_settings(ctx.guild.id)
-        if not settings:
-            await ctx.send("No boss reminder settings found for this server. Please set up the boss reminder channel and role first.")
-            return
-
-        channel = self.bot.get_channel(settings['channel_id'])
-        role = f"<@&{settings['role_id']}>"
-        await channel.send(f"🛠️ {role} This is a test reminder for the Boss Spawn feature.")
+        self.save_guild_settings(interaction.guild.id, channel.id, role.id)
+        await interaction.response.send_message(f"Boss reminder channel set to {channel.mention} and role set to {role.mention}.")
 
     @tasks.loop(minutes=1)
     async def boss_reminder_task(self):
@@ -81,37 +94,47 @@ class BossReminderCog(commands.Cog):
         for guild in self.bot.guilds:
             settings = self.get_guild_settings(guild.id)
             if settings:
-                channel_id = settings['channel_id']
-                role_id = settings['role_id']
-                channel = self.bot.get_channel(channel_id)
-                role = f"<@&{role_id}>"
-                next_boss_time, next_boss_info = self.get_next_boss_info()
-                next_archboss_time, next_archboss_info = self.get_next_archboss_info()
+                channel = self.bot.get_channel(settings['channel_id'])
+                role = f"<@&{settings['role_id']}>"
 
-                # Determine the appropriate emoji for the Archboss
-                archboss_emoji = "🔴" if "Conflict" in next_archboss_info else "🔵"
-                
-                # Regular boss reminder (10 minutes before spawn)
-                if 590 <= (next_boss_time - now).total_seconds() <= 610:
-                    message = f"⏰ {role} Reminder: The next boss spawn is in 10 minutes! Boss: {next_boss_info}"
-                    await channel.send(message)
-                
-                # Archboss reminder (15 minutes before spawn)
-                if next_archboss_time and 890 <= (next_archboss_time - now).total_seconds() <= 910:
-                    message = f"⚔️🔥 {role} Archboss Reminder: The Archboss will spawn in 15 minutes! {archboss_emoji} Boss: {next_archboss_info} (This is a high-priority event!)"
-                    await channel.send(message)
-                    self.update_archboss_cycle()  # Update archboss type after a reminder
+                if not channel:
+                    print(f"[WARNING] Channel {settings['channel_id']} not found for guild {guild.id}.")
+                    continue
 
-    @boss_reminder_task.before_loop
-    async def before_boss_reminder_task(self):
-        await self.bot.wait_until_ready()
+                try:
+                    # Calculate the next spawn times
+                    next_boss_time, next_boss_info = self.get_next_boss_time()
+                    next_archboss_time, next_archboss_info = self.get_next_archboss_time()
+
+                    # Send a reminder 10 minutes before a normal boss if it hasn't already been sent
+                    if (
+                        590 <= (next_boss_time - now).total_seconds() <= 610
+                        and next_boss_time != self.last_boss_reminder_time
+                    ):
+                        message = f"⏰ {role} Reminder: The next boss spawn is in 10 minutes! Boss: {next_boss_info}"
+                        await channel.send(message)
+                        self.last_boss_reminder_time = next_boss_time  # Update last reminder time
+                        print(f"[INFO] Sent reminder for {next_boss_info} in guild {guild.id}.")
+
+                    # Send a reminder 15 minutes before an Archboss if it hasn't already been sent
+                    if (
+                        890 <= (next_archboss_time - now).total_seconds() <= 910
+                        and next_archboss_time != self.last_archboss_reminder_time
+                    ):
+                        archboss_emoji = "🔴" if "Conflict" in next_archboss_info else "🔵"
+                        message = f"⚔️🔥 {role} Reminder: The next Archboss spawn is in 15 minutes! {archboss_emoji} Archboss: {next_archboss_info}"
+                        await channel.send(message)
+                        self.last_archboss_reminder_time = next_archboss_time  # Update last reminder time
+                        print(f"[INFO] Sent reminder for Archboss in guild {guild.id}.")
+
+                except Exception as e:
+                    print(f"[ERROR] Reminder task error for guild {guild.id}: {e}")
 
     @commands.Cog.listener()
     async def on_ready(self):
         if not self.boss_reminder_task.is_running():
-            # Start the boss reminder task loop
             self.boss_reminder_task.start()
+            print("[INFO] Boss reminder task started.")
 
 async def setup(bot):
     await bot.add_cog(BossReminderCog(bot))
-    await bot.tree.sync()

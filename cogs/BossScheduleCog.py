@@ -25,9 +25,8 @@ class BossScheduleCog(commands.Cog):
             (21, "3 Peace Boss, 2 Conflict Boss"),
             (0, "2 Peace Boss, 2 Conflict Boss")
         ]
-        self.archboss_cycle = ["Conflict Boss", "Peace Boss"]
-        self.current_archboss_index = 1  # Start with index 1 as today we are at the last Peace Boss
         self.tz = pytz.timezone('Europe/Berlin')
+        self.archboss_cycle_state = self.load_archboss_cycle_state()
 
     def get_guild_settings(self, guild_id):
         try:
@@ -44,6 +43,58 @@ class BossScheduleCog(commands.Cog):
                 connection.close()
         return None
 
+    def load_archboss_cycle_state(self):
+        # Retrieve the current active cycle state with status=1
+        try:
+            connection = mysql.connector.connect(**DB_CONFIG)
+            if connection.is_connected():
+                cursor = connection.cursor(dictionary=True)
+                cursor.execute("SELECT cycle_state FROM archboss_cycle WHERE status = 1 LIMIT 1")
+                result = cursor.fetchone()
+                if result:
+                    return result['cycle_state']
+                # If no active cycle is found, set the first row as active (Conflict by default)
+                cursor.execute("UPDATE archboss_cycle SET status = 1 WHERE id = 1")
+                connection.commit()
+                return "Conflict"  # Default to Conflict if no status is active
+        except Error as e:
+            print(f"Error while loading archboss cycle state: {e}")
+        finally:
+            if connection.is_connected():
+                connection.close()
+        return "Conflict"
+
+    def update_archboss_cycle_state(self, next_archboss_time):
+        # Shift the active cycle to the next row after each Archboss event
+        now = datetime.now(self.tz)
+        if now >= next_archboss_time:
+            try:
+                connection = mysql.connector.connect(**DB_CONFIG)
+                if connection.is_connected():
+                    cursor = connection.cursor(dictionary=True)
+                    # Find the current active row
+                    cursor.execute("SELECT id FROM archboss_cycle WHERE status = 1 LIMIT 1")
+                    current_row = cursor.fetchone()
+                    
+                    if current_row:
+                        current_id = current_row['id']
+                        next_id = current_id + 1 if current_id < 4 else 1  # Wrap around to the first row
+
+                        # Update status: deactivate current, activate next
+                        cursor.execute("UPDATE archboss_cycle SET status = 0 WHERE id = %s", (current_id,))
+                        cursor.execute("UPDATE archboss_cycle SET status = 1 WHERE id = %s", (next_id,))
+                        connection.commit()
+
+                        # Update local state to the new cycle
+                        cursor.execute("SELECT cycle_state FROM archboss_cycle WHERE id = %s", (next_id,))
+                        new_cycle = cursor.fetchone()
+                        self.archboss_cycle_state = new_cycle['cycle_state'] if new_cycle else "Conflict"
+            except Error as e:
+                print(f"Error while updating archboss cycle state: {e}")
+            finally:
+                if connection.is_connected():
+                    connection.close()
+
     def get_next_boss_info(self):
         now = datetime.now(self.tz)
         for hour, info in self.boss_times:
@@ -56,16 +107,21 @@ class BossScheduleCog(commands.Cog):
 
     def get_next_archboss_info(self):
         now = datetime.now(self.tz)
-        next_archboss_day = None
         # Find the next Wednesday or Saturday
-        for i in range(7):
-            potential_day = now + timedelta(days=i)
-            if potential_day.weekday() in [2, 5]:  # Wednesday or Saturday
-                next_archboss_day = potential_day
-                break
-        if next_archboss_day is not None:
-            return next_archboss_day.replace(hour=19, minute=0, second=0, microsecond=0), self.archboss_cycle[self.current_archboss_index]
-        return None, None
+        days_ahead = (2 - now.weekday()) % 7  # Next Wednesday by default
+        if now.weekday() > 2:  # Move to next Saturday if today is past Wednesday
+            days_ahead = (5 - now.weekday()) % 7
+        if days_ahead == 0 and now.hour >= 19:
+            days_ahead = 3 if now.weekday() == 2 else 4  # If after 19:00, shift to next Archboss day
+
+        next_archboss_day = now + timedelta(days=days_ahead)
+        next_archboss_time = next_archboss_day.replace(hour=19, minute=0, second=0, microsecond=0)
+
+        # Use the active state from the database as the Archboss type
+        archboss_type = self.archboss_cycle_state
+        self.update_archboss_cycle_state(next_archboss_time)  # Update the state if the event has occurred
+
+        return next_archboss_time, archboss_type
 
     @app_commands.command(name="boss_schedule", description="Displays the upcoming boss spawn schedule.")
     async def boss_schedule(self, interaction: discord.Interaction):
@@ -74,6 +130,7 @@ class BossScheduleCog(commands.Cog):
         settings = self.get_guild_settings(interaction.guild.id)
         role_mention = f"<@&{settings['role_id']}>" if settings else "No role set"
 
+        # Embed formatting with corrected newlines
         embed = discord.Embed(title="🕒 Upcoming Boss Spawn Schedule", color=discord.Color.green())
         embed.add_field(
             name="Next Boss",
@@ -81,46 +138,35 @@ class BossScheduleCog(commands.Cog):
             inline=False
         )
 
-        # Add an emoji based on boss type
-        if "Conflict" in next_archboss_info:
-            archboss_emoji = "🔴"
-        else:
-            archboss_emoji = "🔵"
-
+        # Determine emoji for Archboss type
+        archboss_emoji = "🔴" if "Conflict" in next_archboss_info else "🔵"
         if next_archboss_time and next_archboss_time < next_boss_time:
             embed.add_field(
-                name=f"⚔️ Next Archboss (This is a high-priority event!) {archboss_emoji}",
+                name=f"⚔️ Next Archboss (High Priority!) {archboss_emoji}",
                 value=f"**Time**: <t:{int(next_archboss_time.timestamp())}:R>\n**Boss**: {next_archboss_info}",
                 inline=False
             )
         else:
             embed.add_field(
-                name=f"Next Archboss (Important!) {archboss_emoji}",
+                name=f"Next Archboss {archboss_emoji}",
                 value=f"**Time**: <t:{int(next_archboss_time.timestamp())}:R>\n**Boss**: {next_archboss_info}",
                 inline=False
             )
 
         embed.add_field(
             name="Boss Spawn Reminder Role",
-            value=(
-                f"{role_mention}\n"
-                "React with the emoji below to gain access to the reminder feature!"
-            ),
+            value=(f"{role_mention}\nReact with the emoji below to access the reminder!"),
             inline=False
         )
-
         embed.set_thumbnail(url="https://haruki.s-ul.eu/fjEy0RW7")
         embed.set_footer(text="All times are in Berlin Standard Time (CET/CEST).")
+
         await interaction.response.send_message(embed=embed)
         message = await interaction.original_response()
-
-        # React to the message to allow users to gain access to the reminder role
         await message.add_reaction("⏰")
-        # Remove the bot's reaction to allow users to toggle the role
         reaction = discord.utils.get(message.reactions, emoji="⏰")
         if reaction and reaction.me:
             await reaction.remove(self.bot.user)
 
 async def setup(bot):
     await bot.add_cog(BossScheduleCog(bot))
-    await bot.tree.sync()
