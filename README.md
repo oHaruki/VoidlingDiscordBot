@@ -107,12 +107,6 @@ python bot.py
 
 - **bot.py**: The main entry point for the bot.
 - **cogs/**: Contains individual features of the bot as separate modules.
-  - **drops.py**: Manages drop-related functionalities.
-  - **guild\_member\_gear.py**: Handles adding/updating guild member information and viewing member lists.
-  - **guild\_stats\_command.py**: Handles the `/guild_stats` command.
-  - **ping\_pong.py**: Implements the ping command.
-  - **WeeklyGuildBoss.py**: Handles tracking and notifying about weekly boss events.
-  - **WelcomeMessage.py**: Sends welcome messages to new server members.
 - **token.env**: Stores environment variables for sensitive information.
 - **requirements.txt**: Contains a list of required Python libraries.
 
