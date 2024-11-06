@@ -3,7 +3,7 @@
 ## Overview
 
 The Discord Bot is designed to manage and track guild members within a the Discord server. It allows users to register in-game information such as gear score, class, and weapons, and displays this information in an organized manner. Additionally, it provides valuable features for guild management, including guild member statistics, Boss voting, and welcoming new members.
-It was mostly designed to fit our needs for the Guild "Voidling" , some features might have no use for you.
+It also has a built in Boss Timer + Reminder, for now it display not exact Boss Information till API from Amazon is being released.
 
 ## Features
 
@@ -85,6 +85,7 @@ python bot.py
 ### Slash Commands (`/`)
 
 - **/blessing**: Calc for Blessing with detailed Analysis when Blue or Purple Blessing is more efficent.
+- **/boss\_schedule**: Displays Boss Timer
 - **/add\_member**: Add or update your guild member gear information.
   - **Parameters**: `ingame_name`, `gear_score`, `guild_class`, `main_hand`, `offhand`
 - **/guildmembers**: Display a paginated list of guild members sorted by gear score.
