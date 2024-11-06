@@ -84,6 +84,7 @@ python bot.py
 
 ### Slash Commands (`/`)
 
+- **/blessing**: Calc for Blessing with detailed Analysis when Blue or Purple Blessing is more efficent.
 - **/add\_member**: Add or update your guild member gear information.
   - **Parameters**: `ingame_name`, `gear_score`, `guild_class`, `main_hand`, `offhand`
 - **/guildmembers**: Display a paginated list of guild members sorted by gear score.
