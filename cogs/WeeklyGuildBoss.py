@@ -83,5 +83,3 @@ class WeeklyGuildBoss(commands.Cog):
 
 async def setup(bot):
     await bot.add_cog(WeeklyGuildBoss(bot))
-    # Sync commands to make sure they appear
-    await bot.tree.sync()

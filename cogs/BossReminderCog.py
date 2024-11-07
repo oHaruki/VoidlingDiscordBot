@@ -108,7 +108,7 @@ class BossReminderCog(commands.Cog):
 
                     # Send a reminder 10 minutes before a normal boss if it hasn't already been sent
                     if (
-                        590 <= (next_boss_time - now).total_seconds() <= 610
+                        550 <= (next_boss_time - now).total_seconds() <= 650
                         and next_boss_time != self.last_boss_reminder_time
                     ):
                         message = f"⏰ {role} Reminder: The next boss spawn is in 10 minutes! Boss: {next_boss_info}"
@@ -118,7 +118,7 @@ class BossReminderCog(commands.Cog):
 
                     # Send a reminder 15 minutes before an Archboss if it hasn't already been sent
                     if (
-                        890 <= (next_archboss_time - now).total_seconds() <= 910
+                        850 <= (next_archboss_time - now).total_seconds() <= 950
                         and next_archboss_time != self.last_archboss_reminder_time
                     ):
                         archboss_emoji = "🔴" if "Conflict" in next_archboss_info else "🔵"
