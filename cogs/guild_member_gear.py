@@ -114,6 +114,7 @@ class GuildMemberGear(commands.Cog):
     )
     async def add_member(self, interaction: discord.Interaction, ingame_name: str, gear_score: int, 
                          guild_class: str, main_hand: str, offhand: str):
+        # Validate weapons
         if main_hand not in VALID_WEAPONS:
             await interaction.response.send_message(
                 f"Invalid main hand weapon! Please choose from: {', '.join(VALID_WEAPONS)}", ephemeral=True
@@ -122,6 +123,14 @@ class GuildMemberGear(commands.Cog):
         if offhand not in VALID_WEAPONS:
             await interaction.response.send_message(
                 f"Invalid offhand weapon! Please choose from: {', '.join(VALID_WEAPONS)}", ephemeral=True
+            )
+            return
+        
+        # Validate guild class
+        valid_classes = ["Healer", "DPS", "Tank"]
+        if guild_class not in valid_classes:
+            await interaction.response.send_message(
+                f"Invalid class! Please choose from: {', '.join(valid_classes)}", ephemeral=True
             )
             return
 
@@ -147,69 +156,11 @@ class GuildMemberGear(commands.Cog):
         cursor.close()
 
         if not members:
-            await interaction.response.send_message("No guild members found.", ephemeral=True)
+            await interaction.response.send_message("No members found in the database.", ephemeral=True)
             return
 
         view = PagedGuildMembersView(members)
         await interaction.response.send_message(content=view.get_page_text(), view=view)
-
-    @app_commands.command(name="manage_fake_entries", description="Add or delete fake guild member entries.")
-    @app_commands.describe(action="Choose 'add' to add fake entries or 'delete' to delete them.")
-    async def manage_fake_entries(self, interaction: discord.Interaction, action: str):
-        if interaction.user.id != interaction.guild.owner_id:
-            await interaction.response.send_message("Only the server owner can use this command.", ephemeral=True)
-            return
-
-        guild_id = interaction.guild.id
-        cursor = self.db_connection.cursor()
-
-        if action.lower() == "add":
-            # Insert 45 fake entries
-            classes = ["Healer", "DPS", "Tank"]
-            weapons = ["Staff", "Dagger", "SwordAndShield", "Greatsword", "Long Bow", "Crossbow", "WandAndTome"]
-
-            for i in range(1, 46):
-                ingame_name = f"FakeUser{i}"
-                gear_score = random.randint(1000, 4000)
-                guild_class = random.choice(classes)
-                main_hand = random.choice(weapons)
-                offhand = random.choice(weapons)
-
-                query = '''
-                    REPLACE INTO guild_members (discord_id, guild_id, ingame_name, gear_score, class, main_hand, offhand) 
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
-                '''
-                cursor.execute(query, (100000 + i, guild_id, ingame_name, gear_score, guild_class, main_hand, offhand))
-
-            self.db_connection.commit()
-            await interaction.response.send_message("Inserted 45 fake entries successfully.", ephemeral=True)
-
-        elif action.lower() == "delete":
-            # Delete all fake entries where the discord_id is in the range 100001 - 100045
-            try:
-                delete_query = '''
-                    DELETE FROM guild_members
-                    WHERE guild_id = %s AND discord_id >= 100001 AND discord_id <= 100045
-                '''
-                cursor.execute(delete_query, (guild_id,))
-                self.db_connection.commit()
-                await interaction.response.send_message("Deleted 45 fake entries successfully.", ephemeral=True)
-            except mysql.connector.Error as err:
-                await interaction.response.send_message(f"Error deleting fake entries: {err}", ephemeral=True)
-
-        else:
-            await interaction.response.send_message("Invalid action. Use 'add' to insert fake entries or 'delete' to remove them.", ephemeral=True)
-
-        cursor.close()
-
-    @commands.Cog.listener()
-    async def on_member_remove(self, member):
-        guild_id = member.guild.id
-
-        cursor = self.db_connection.cursor()
-        cursor.execute("DELETE FROM guild_members WHERE discord_id = %s AND guild_id = %s", (member.id, guild_id))
-        cursor.close()
-        self.db_connection.commit()
 
 async def setup(bot):
     await bot.add_cog(GuildMemberGear(bot))

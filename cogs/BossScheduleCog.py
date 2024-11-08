@@ -101,27 +101,23 @@ class BossScheduleCog(commands.Cog):
             boss_time = now.replace(hour=hour, minute=0, second=0, microsecond=0)
             if boss_time > now:
                 return boss_time, info
-        # If no boss time is found today, return the first boss time tomorrow
+        # If no boss time is found today, return the midnight boss time tomorrow if it exists
         next_day = now + timedelta(days=1)
+        midnight_boss = next((time for time in self.boss_times if time[0] == 0), None)
+        if midnight_boss:
+            return next_day.replace(hour=0, minute=0, second=0, microsecond=0), midnight_boss[1]
+        # Otherwise, return the first boss time of the day
         return next_day.replace(hour=self.boss_times[0][0], minute=0, second=0, microsecond=0), self.boss_times[0][1]
 
     def get_next_archboss_info(self):
         now = datetime.now(self.tz)
         # Find the next Wednesday or Saturday
         days_ahead = (2 - now.weekday()) % 7  # Next Wednesday by default
-        if now.weekday() > 2:  # Move to next Saturday if today is past Wednesday
+        if now.weekday() > 2:  # Move to next Saturday if today is Thursday or later
             days_ahead = (5 - now.weekday()) % 7
-        if days_ahead == 0 and now.hour >= 19:
-            days_ahead = 3 if now.weekday() == 2 else 4  # If after 19:00, shift to next Archboss day
-
-        next_archboss_day = now + timedelta(days=days_ahead)
-        next_archboss_time = next_archboss_day.replace(hour=19, minute=0, second=0, microsecond=0)
-
-        # Use the active state from the database as the Archboss type
-        archboss_type = self.archboss_cycle_state
-        self.update_archboss_cycle_state(next_archboss_time)  # Update the state if the event has occurred
-
-        return next_archboss_time, archboss_type
+        next_archboss_date = now + timedelta(days=days_ahead)
+        next_archboss_time = next_archboss_date.replace(hour=20, minute=0, second=0, microsecond=0)
+        return next_archboss_time, self.archboss_cycle_state
 
     @app_commands.command(name="boss_schedule", description="Displays the upcoming boss spawn schedule.")
     async def boss_schedule(self, interaction: discord.Interaction):

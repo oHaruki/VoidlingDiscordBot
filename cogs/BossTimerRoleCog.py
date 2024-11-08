@@ -43,7 +43,7 @@ class BossTimerRoleCog(commands.Cog):
             await interaction.response.send_message("Role not found. Please contact an admin.", ephemeral=True)
             return
 
-        # Add the role to the user if they don’t have it
+        # Add the role to the user if they donï¿½t have it
         if role in interaction.user.roles:
             await interaction.response.send_message("You are already subscribed to Boss Timer.", ephemeral=True)
         else:
@@ -73,4 +73,3 @@ class BossTimerRoleCog(commands.Cog):
 
 async def setup(bot):
     await bot.add_cog(BossTimerRoleCog(bot))
-    await bot.tree.sync()  # Ensure commands are synced across servers
