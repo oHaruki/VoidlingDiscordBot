@@ -38,6 +38,64 @@ class BossReminderCog(commands.Cog):
                 connection.close()
         return None
 
+    def get_next_boss_time(self):
+        now = datetime.now(self.tz)
+        daily_spawn_times = [12, 15, 19, 21, 0]  # Original spawn times for normal bosses
+        for hour in daily_spawn_times:
+            boss_time = now.replace(hour=hour, minute=0, second=0, microsecond=0)
+            if boss_time > now:
+                return boss_time, "Normal Boss"
+        # If no boss time is found today, explicitly set the next boss time to midnight of the next day
+        next_day = now + timedelta(days=1)
+        next_boss_time = next_day.replace(hour=0, minute=0, second=0, microsecond=0)
+        return next_boss_time, "Normal Boss"
+
+    def get_next_archboss_time(self):
+        now = datetime.now(self.tz)
+        next_wednesday = now + timedelta((2 - now.weekday()) % 7)
+        next_saturday = now + timedelta((5 - now.weekday()) % 7)
+        next_archboss_day = next_wednesday if next_wednesday < next_saturday else next_saturday
+        next_archboss_time = next_archboss_day.replace(hour=19, minute=0, second=0, microsecond=0)
+        return next_archboss_time, "Archboss"
+
+    @tasks.loop(minutes=1)
+    async def boss_reminder_task(self):
+        now = datetime.now(self.tz)
+        for guild in self.bot.guilds:
+            settings = self.get_guild_settings(guild.id)
+            if not settings:
+                continue
+
+            channel = self.bot.get_channel(settings['channel_id'])
+            role = f"<@&{settings['role_id']}>"
+
+            # Get next boss and archboss times
+            next_boss_time, boss_type = self.get_next_boss_time()
+            next_archboss_time, archboss_type = self.get_next_archboss_time()
+
+            # Check if it's time to send a reminder for normal bosses
+            if (next_boss_time - now).total_seconds() <= 900:  # 15 minutes before the spawn
+                if not self.last_boss_reminder_time or self.last_boss_reminder_time.date() != now.date() or now > self.last_boss_reminder_time:
+                    self.last_boss_reminder_time = next_boss_time
+                    if channel:
+                        await channel.send(f"{role} Reminder: A **{boss_type}** will spawn in 15 minutes at <t:{int(next_boss_time.timestamp())}:t>.")
+
+            # Check if it's time to send a reminder for archbosses
+            if (next_archboss_time - now).total_seconds() <= 900:  # 15 minutes before the spawn
+                if not self.last_archboss_reminder_time or self.last_archboss_reminder_time.date() != now.date() or now > self.last_archboss_reminder_time:
+                    self.last_archboss_reminder_time = next_archboss_time
+                    if channel:
+                        await channel.send(f"{role} Reminder: An **{archboss_type}** will spawn in 15 minutes at <t:{int(next_archboss_time.timestamp())}:t>.")
+
+    @boss_reminder_task.before_loop
+    async def before_boss_reminder_task(self):
+        await self.bot.wait_until_ready()
+
+    @app_commands.command(name="set_boss_channel", description="Set the channel and role for boss reminders.")
+    async def set_boss_channel(self, interaction: discord.Interaction, channel: discord.TextChannel, role: discord.Role):
+        self.save_guild_settings(interaction.guild.id, channel.id, role.id)
+        await interaction.response.send_message(f"Boss reminder channel set to {channel.mention} and role set to {role.mention}.")
+
     def save_guild_settings(self, guild_id, channel_id, role_id):
         try:
             connection = mysql.connector.connect(**DB_CONFIG)
@@ -56,79 +114,6 @@ class BossReminderCog(commands.Cog):
         finally:
             if connection.is_connected():
                 connection.close()
-
-    def get_next_boss_time(self):
-        # Boss spawn times in Europe/Berlin timezone (original BST times)
-        now = datetime.now(self.tz)
-        daily_spawn_times = [12, 15, 19, 21, 0]  # Original BST/Europe/Berlin times for normal bosses
-        for hour in daily_spawn_times:
-            boss_time = now.replace(hour=hour, minute=0, second=0, microsecond=0)
-            if boss_time > now:
-                return boss_time, "Normal Boss"
-        next_day = now + timedelta(days=1)
-        next_boss_time = next_day.replace(hour=daily_spawn_times[0], minute=0, second=0, microsecond=0)
-        return next_boss_time, "Normal Boss"
-
-    def get_next_archboss_time(self):
-        # Archboss spawn times in Europe/Berlin timezone (originally 19:00 BST)
-        now = datetime.now(self.tz)
-        days_until_next_archboss = (2 - now.weekday()) % 7 if now.weekday() <= 2 else (5 - now.weekday()) % 7
-        next_archboss_day = now + timedelta(days=days_until_next_archboss)
-        next_archboss_time = next_archboss_day.replace(hour=19, minute=0, second=0, microsecond=0)  # 19:00 Europe/Berlin
-
-        # If today is Archboss day but after 19:00, move to the next spawn day
-        if next_archboss_time <= now:
-            next_archboss_time += timedelta(days=3 if next_archboss_time.weekday() == 2 else 4)
-        
-        return next_archboss_time, "Archboss"
-
-    @app_commands.command(name="set_boss_channel", description="Set the channel and role for boss reminders.")
-    @commands.has_permissions(administrator=True)
-    async def set_boss_channel(self, interaction: discord.Interaction, channel: discord.TextChannel, role: discord.Role):
-        self.save_guild_settings(interaction.guild.id, channel.id, role.id)
-        await interaction.response.send_message(f"Boss reminder channel set to {channel.mention} and role set to {role.mention}.")
-
-    @tasks.loop(minutes=1)
-    async def boss_reminder_task(self):
-        now = datetime.now(self.tz)
-        for guild in self.bot.guilds:
-            settings = self.get_guild_settings(guild.id)
-            if settings:
-                channel = self.bot.get_channel(settings['channel_id'])
-                role = f"<@&{settings['role_id']}>"
-
-                if not channel:
-                    print(f"[WARNING] Channel {settings['channel_id']} not found for guild {guild.id}.")
-                    continue
-
-                try:
-                    # Calculate the next spawn times
-                    next_boss_time, next_boss_info = self.get_next_boss_time()
-                    next_archboss_time, next_archboss_info = self.get_next_archboss_time()
-
-                    # Send a reminder 10 minutes before a normal boss if it hasn't already been sent
-                    if (
-                        550 <= (next_boss_time - now).total_seconds() <= 650
-                        and next_boss_time != self.last_boss_reminder_time
-                    ):
-                        message = f"⏰ {role} Reminder: The next boss spawn is in 10 minutes! Boss: {next_boss_info}"
-                        await channel.send(message)
-                        self.last_boss_reminder_time = next_boss_time  # Update last reminder time
-                        print(f"[INFO] Sent reminder for {next_boss_info} in guild {guild.id}.")
-
-                    # Send a reminder 15 minutes before an Archboss if it hasn't already been sent
-                    if (
-                        850 <= (next_archboss_time - now).total_seconds() <= 950
-                        and next_archboss_time != self.last_archboss_reminder_time
-                    ):
-                        archboss_emoji = "🔴" if "Conflict" in next_archboss_info else "🔵"
-                        message = f"⚔️🔥 {role} Reminder: The next Archboss spawn is in 15 minutes! {archboss_emoji} Archboss: {next_archboss_info}"
-                        await channel.send(message)
-                        self.last_archboss_reminder_time = next_archboss_time  # Update last reminder time
-                        print(f"[INFO] Sent reminder for Archboss in guild {guild.id}.")
-
-                except Exception as e:
-                    print(f"[ERROR] Reminder task error for guild {guild.id}: {e}")
 
     @commands.Cog.listener()
     async def on_ready(self):

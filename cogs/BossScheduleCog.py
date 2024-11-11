@@ -28,21 +28,6 @@ class BossScheduleCog(commands.Cog):
         self.tz = pytz.timezone('Europe/Berlin')
         self.archboss_cycle_state = self.load_archboss_cycle_state()
 
-    def get_guild_settings(self, guild_id):
-        try:
-            connection = mysql.connector.connect(**DB_CONFIG)
-            if connection.is_connected():
-                cursor = connection.cursor(dictionary=True)
-                cursor.execute("SELECT channel_id, role_id FROM guild_settings WHERE guild_id = %s", (guild_id,))
-                result = cursor.fetchone()
-                return result
-        except Error as e:
-            print(f"Error while connecting to MySQL: {e}")
-        finally:
-            if connection.is_connected():
-                connection.close()
-        return None
-
     def load_archboss_cycle_state(self):
         # Retrieve the current active cycle state with status=1
         try:
@@ -79,13 +64,11 @@ class BossScheduleCog(commands.Cog):
                     if current_row:
                         current_id = current_row['id']
                         next_id = current_id + 1 if current_id < 4 else 1  # Wrap around to the first row
-
-                        # Update status: deactivate current, activate next
+                        # Update the cycle state
                         cursor.execute("UPDATE archboss_cycle SET status = 0 WHERE id = %s", (current_id,))
                         cursor.execute("UPDATE archboss_cycle SET status = 1 WHERE id = %s", (next_id,))
                         connection.commit()
-
-                        # Update local state to the new cycle
+                        # Load the new cycle state
                         cursor.execute("SELECT cycle_state FROM archboss_cycle WHERE id = %s", (next_id,))
                         new_cycle = cursor.fetchone()
                         self.archboss_cycle_state = new_cycle['cycle_state'] if new_cycle else "Conflict"
@@ -94,6 +77,22 @@ class BossScheduleCog(commands.Cog):
             finally:
                 if connection.is_connected():
                     connection.close()
+
+    def get_guild_settings(self, guild_id):
+        # Retrieve guild settings from the database
+        try:
+            connection = mysql.connector.connect(**DB_CONFIG)
+            if connection.is_connected():
+                cursor = connection.cursor(dictionary=True)
+                cursor.execute("SELECT channel_id, role_id FROM guild_settings WHERE guild_id = %s", (guild_id,))
+                result = cursor.fetchone()
+                return result
+        except Error as e:
+            print(f"Error while connecting to MySQL: {e}")
+        finally:
+            if connection.is_connected():
+                connection.close()
+        return None
 
     def get_next_boss_info(self):
         now = datetime.now(self.tz)
@@ -112,11 +111,16 @@ class BossScheduleCog(commands.Cog):
     def get_next_archboss_info(self):
         now = datetime.now(self.tz)
         # Find the next Wednesday or Saturday
-        days_ahead = (2 - now.weekday()) % 7  # Next Wednesday by default
-        if now.weekday() > 2:  # Move to next Saturday if today is Thursday or later
-            days_ahead = (5 - now.weekday()) % 7
-        next_archboss_date = now + timedelta(days=days_ahead)
-        next_archboss_time = next_archboss_date.replace(hour=20, minute=0, second=0, microsecond=0)
+        next_wednesday = now + timedelta((2 - now.weekday()) % 7)
+        next_saturday = now + timedelta((5 - now.weekday()) % 7)
+        
+        # Determine which is sooner and set the time to 19:00
+        if next_wednesday < next_saturday:
+            next_archboss_date = next_wednesday
+        else:
+            next_archboss_date = next_saturday
+        
+        next_archboss_time = next_archboss_date.replace(hour=19, minute=0, second=0, microsecond=0)
         return next_archboss_time, self.archboss_cycle_state
 
     @app_commands.command(name="boss_schedule", description="Displays the upcoming boss spawn schedule.")

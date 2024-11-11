@@ -76,7 +76,8 @@ class Drops(commands.Cog):
                 users = [user async for user in reaction.users()]
                 for user in users:
                     if user != self.bot.user:
-                        results[items[item_index]].append(user.name)
+                        member = interaction.guild.get_member(user.id)
+                        results[items[item_index]].append(member.display_name if member else user.name)
 
         results_text = "\n".join([f"**{item}**: {', '.join(users) if users else 'No votes'}" for item, users in results.items()])
         await interaction.followup.send(f"Reaction results:\n{results_text if results_text else 'No votes yet!'}")
