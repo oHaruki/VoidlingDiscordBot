@@ -2,6 +2,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 import mysql.connector
+from mysql.connector import pooling
 import os
 import random
 
@@ -82,7 +83,7 @@ class PagedGuildMembersView(discord.ui.View):
 class GuildMemberGear(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.db_connection = mysql.connector.connect(**DB_CONFIG)
+        self.db_connection = db_manager.get_connection()
         self.create_table()
 
     def create_table(self):
@@ -164,3 +165,21 @@ class GuildMemberGear(commands.Cog):
 
 async def setup(bot):
     await bot.add_cog(GuildMemberGear(bot))
+
+# Improved database connection management with pooling and reconnection
+class DatabaseManager:
+    def __init__(self, config):
+        self.config = config
+        self.pool = pooling.MySQLConnectionPool(pool_name="mypool", pool_size=5, **config)
+
+    def get_connection(self):
+        try:
+            connection = self.pool.get_connection()
+            connection.ping(reconnect=True)  # Ensure the connection is active
+            return connection
+        except mysql.connector.Error as err:
+            print(f"Error: {err}")
+            return None
+
+# Initialize the DatabaseManager
+db_manager = DatabaseManager(DB_CONFIG)
