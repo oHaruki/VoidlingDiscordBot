@@ -19,11 +19,11 @@ class BossScheduleCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.boss_times = [
-            (12, "2 Peace Boss, 1 Conflict Boss"),
-            (15, "2 Peace Boss, 1 Conflict Boss"),
-            (19, "4 Peace Boss, 3 Conflict Boss"),
-            (21, "3 Peace Boss, 2 Conflict Boss"),
-            (0, "2 Peace Boss, 2 Conflict Boss")
+            (13, "2 Peace Boss, 1 Conflict Boss"),
+            (16, "2 Peace Boss, 1 Conflict Boss"),
+            (20, "4 Peace Boss, 3 Conflict Boss"),
+            (22, "3 Peace Boss, 2 Conflict Boss"),
+            (1, "2 Peace Boss, 2 Conflict Boss")
         ]
         self.tz = pytz.timezone('Europe/Berlin')
         self.archboss_cycle_state = self.load_archboss_cycle_state()
@@ -114,13 +114,13 @@ class BossScheduleCog(commands.Cog):
         next_wednesday = now + timedelta((2 - now.weekday()) % 7)
         next_saturday = now + timedelta((5 - now.weekday()) % 7)
         
-        # Determine which is sooner and set the time to 19:00
+        # Determine which is sooner and set the time to 20:00
         if next_wednesday < next_saturday:
             next_archboss_date = next_wednesday
         else:
             next_archboss_date = next_saturday
         
-        next_archboss_time = next_archboss_date.replace(hour=19, minute=0, second=0, microsecond=0)
+        next_archboss_time = next_archboss_date.replace(hour=20, minute=0, second=0, microsecond=0)
         return next_archboss_time, self.archboss_cycle_state
 
     @app_commands.command(name="boss_schedule", description="Displays the upcoming boss spawn schedule.")
@@ -131,7 +131,7 @@ class BossScheduleCog(commands.Cog):
         role_mention = f"<@&{settings['role_id']}>" if settings else "No role set"
 
         # Embed formatting with corrected newlines
-        embed = discord.Embed(title="🕒 Upcoming Boss Spawn Schedule", color=discord.Color.green())
+        embed = discord.Embed(title="ðŸ•’ Upcoming Boss Spawn Schedule", color=discord.Color.green())
         embed.add_field(
             name="Next Boss",
             value=f"**Time**: <t:{int(next_boss_time.timestamp())}:R>\n**Boss**: {next_boss_info}",
@@ -139,10 +139,10 @@ class BossScheduleCog(commands.Cog):
         )
 
         # Determine emoji for Archboss type
-        archboss_emoji = "🔴" if "Conflict" in next_archboss_info else "🔵"
+        archboss_emoji = "ðŸ”´" if "Conflict" in next_archboss_info else "ðŸ”µ"
         if next_archboss_time and next_archboss_time < next_boss_time:
             embed.add_field(
-                name=f"⚔️ Next Archboss (High Priority!) {archboss_emoji}",
+                name=f"âš”ï¸ Next Archboss (High Priority!) {archboss_emoji}",
                 value=f"**Time**: <t:{int(next_archboss_time.timestamp())}:R>\n**Boss**: {next_archboss_info}",
                 inline=False
             )
@@ -163,8 +163,8 @@ class BossScheduleCog(commands.Cog):
 
         await interaction.response.send_message(embed=embed)
         message = await interaction.original_response()
-        await message.add_reaction("⏰")
-        reaction = discord.utils.get(message.reactions, emoji="⏰")
+        await message.add_reaction("â°")
+        reaction = discord.utils.get(message.reactions, emoji="â°")
         if reaction and reaction.me:
             await reaction.remove(self.bot.user)
 
