@@ -18,7 +18,7 @@ DB_CONFIG = {
 class BossReminderCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.tz = pytz.timezone('Europe/Berlin')  # Setting timezone to Europe/Berlin
+        self.tz = pytz.timezone('UTC')  # Setting timezone to Europe/Berlin
         self.reminders_sent = {}  # Track sent reminders per guild and boss type
         self.boss_reminder_task.start()
 
@@ -39,7 +39,7 @@ class BossReminderCog(commands.Cog):
 
     def get_next_boss_time(self):
         now = datetime.now(self.tz)
-        daily_spawn_times = [13, 16, 20, 22, 1]  # Original spawn times for normal bosses
+        daily_spawn_times = [12, 15, 19, 21, 0]  # Original spawn times for normal bosses
         for hour in daily_spawn_times:
             boss_time = now.replace(hour=hour, minute=0, second=0, microsecond=0)
             if boss_time > now:
@@ -53,8 +53,8 @@ class BossReminderCog(commands.Cog):
         next_wednesday = now + timedelta((2 - now.weekday()) % 7)
         next_saturday = now + timedelta((5 - now.weekday()) % 7)
         archboss_times = [
-            next_wednesday.replace(hour=20, minute=0, second=0, microsecond=0),
-            next_saturday.replace(hour=20, minute=0, second=0, microsecond=0)
+            next_wednesday.replace(hour=19, minute=0, second=0, microsecond=0),
+            next_saturday.replace(hour=19, minute=0, second=0, microsecond=0)
         ]
         for archboss_time in archboss_times:
             if archboss_time > now:
