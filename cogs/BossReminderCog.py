@@ -22,6 +22,9 @@ class BossReminderCog(commands.Cog):
         self.reminders_sent = {}  # Track sent reminders per guild and boss type
         self.boss_reminder_task.start()
 
+    def cog_unload(self):
+        self.boss_reminder_task.cancel()
+
     def get_guild_settings(self, guild_id):
         try:
             connection = mysql.connector.connect(**DB_CONFIG)

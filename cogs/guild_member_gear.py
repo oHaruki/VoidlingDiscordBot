@@ -32,18 +32,15 @@ class PagedGuildMembersView(discord.ui.View):
         self.next_button.disabled = self.current_page >= (len(self.members) - 1) // self.items_per_page
 
     def get_page_text(self):
-        # Generate text content for the current page
         start = self.current_page * self.items_per_page
         end = start + self.items_per_page
         page_members = self.members[start:end]
 
-        # Header
         text = "**Guild Members List**\n"
-        text += "```diff\n"  # Use 'diff' to leverage color highlighting for all content
+        text += "```diff\n"
         text += f" Name           | Gear Score     | Class          | Main Hand      | Offhand       \n"
         text += "-" * 78 + "\n"
 
-        # Add each member's information as a row
         for member in page_members:
             class_prefix = ""
             if member['class'] == "Healer":
@@ -51,7 +48,7 @@ class PagedGuildMembersView(discord.ui.View):
             elif member['class'] == "DPS":
                 class_prefix = "-"
             elif member['class'] == "Tank":
-                class_prefix = "#"  # Use # to give Tanks a distinct color, often gray
+                class_prefix = "#"
 
             text += (
                 f"{class_prefix}{member['ingame_name']:<15}| "
@@ -137,15 +134,30 @@ class GuildMemberGear(commands.Cog):
 
         guild_id = interaction.guild.id
 
+        # Reconnect if the connection is invalid
+        if not self.db_connection.is_connected():
+            self.db_connection = db_manager.get_connection()
+
+        if not self.db_connection:  # Handle cases where reconnection fails
+            await interaction.response.send_message(
+                "Database connection could not be established. Please try again later.", ephemeral=True
+            )
+            return
+
         cursor = self.db_connection.cursor()
-        query = '''
-            REPLACE INTO guild_members (discord_id, guild_id, ingame_name, gear_score, class, main_hand, offhand) 
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
-        '''
-        cursor.execute(query, (interaction.user.id, guild_id, ingame_name, gear_score, guild_class, main_hand, offhand))
-        cursor.close()
-        self.db_connection.commit()
-        await interaction.response.send_message("Your guild member information has been added/updated successfully.", ephemeral=True)
+        try:
+            query = '''
+                REPLACE INTO guild_members (discord_id, guild_id, ingame_name, gear_score, class, main_hand, offhand) 
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+            '''
+            cursor.execute(query, (interaction.user.id, guild_id, ingame_name, gear_score, guild_class, main_hand, offhand))
+            self.db_connection.commit()
+            await interaction.response.send_message("Your guild member information has been added/updated successfully.", ephemeral=True)
+        except mysql.connector.Error as err:
+            print(f"Database error: {err}")
+            await interaction.response.send_message("An error occurred while accessing the database. Please try again later.", ephemeral=True)
+        finally:
+            cursor.close()
 
     @app_commands.command(name="guildmembers", description="Display a paginated list of guild members sorted by gear score.")
     async def guildmembers(self, interaction: discord.Interaction):
