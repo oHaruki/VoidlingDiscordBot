@@ -4,6 +4,7 @@ from discord.ext import commands
 import mysql.connector
 import os
 from collections import Counter
+from mysql.connector import pooling
 
 # Database connection configuration using environment variables
 DB_CONFIG = {
@@ -13,19 +14,50 @@ DB_CONFIG = {
     "database": os.getenv("DB_NAME")
 }
 
+# Improved database connection management with pooling and reconnection
+class DatabaseManager:
+    def __init__(self, config):
+        self.config = config
+        self.pool = pooling.MySQLConnectionPool(pool_name="mypool", pool_size=5, **config)
+
+    def get_connection(self):
+        try:
+            connection = self.pool.get_connection()
+            connection.ping(reconnect=True)  # Ensure the connection is active
+            return connection
+        except mysql.connector.Error as err:
+            print(f"Error: {err}")
+            return None
+
+# Initialize the DatabaseManager
+db_manager = DatabaseManager(DB_CONFIG)
+
 class GuildStats(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.db_connection = mysql.connector.connect(**DB_CONFIG)
 
     @app_commands.command(name="guild_stats", description="Display stats about your guild members.")
     async def guild_stats(self, interaction: discord.Interaction):
         guild_id = interaction.guild.id
 
-        cursor = self.db_connection.cursor(dictionary=True)
-        cursor.execute("SELECT * FROM guild_members WHERE guild_id = %s", (guild_id,))
-        members = cursor.fetchall()
-        cursor.close()
+        db_connection = db_manager.get_connection()
+        if not db_connection:
+            await interaction.response.send_message(
+                "Database connection could not be established. Please try again later.", ephemeral=True
+            )
+            return
+
+        cursor = db_connection.cursor(dictionary=True)
+        try:
+            cursor.execute("SELECT * FROM guild_members WHERE guild_id = %s", (guild_id,))
+            members = cursor.fetchall()
+        except mysql.connector.Error as err:
+            print(f"Database error: {err}")
+            await interaction.response.send_message("An error occurred while accessing the database. Please try again later.", ephemeral=True)
+            return
+        finally:
+            cursor.close()
+            db_connection.close()
 
         if not members:
             await interaction.response.send_message("No guild members found.", ephemeral=True)

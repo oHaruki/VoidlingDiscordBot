@@ -4,7 +4,6 @@ from discord.ext import commands
 import mysql.connector
 from mysql.connector import pooling
 import os
-import random
 
 # Database connection configuration using environment variables
 DB_CONFIG = {
@@ -112,7 +111,6 @@ class GuildMemberGear(commands.Cog):
     )
     async def add_member(self, interaction: discord.Interaction, ingame_name: str, gear_score: int, 
                          guild_class: str, main_hand: str, offhand: str):
-        # Validate weapons
         if main_hand not in VALID_WEAPONS:
             await interaction.response.send_message(
                 f"Invalid main hand weapon! Please choose from: {', '.join(VALID_WEAPONS)}", ephemeral=True
@@ -123,8 +121,7 @@ class GuildMemberGear(commands.Cog):
                 f"Invalid offhand weapon! Please choose from: {', '.join(VALID_WEAPONS)}", ephemeral=True
             )
             return
-        
-        # Validate guild class
+
         valid_classes = ["Healer", "DPS", "Tank"]
         if guild_class not in valid_classes:
             await interaction.response.send_message(
@@ -134,11 +131,10 @@ class GuildMemberGear(commands.Cog):
 
         guild_id = interaction.guild.id
 
-        # Reconnect if the connection is invalid
         if not self.db_connection.is_connected():
             self.db_connection = db_manager.get_connection()
 
-        if not self.db_connection:  # Handle cases where reconnection fails
+        if not self.db_connection:
             await interaction.response.send_message(
                 "Database connection could not be established. Please try again later.", ephemeral=True
             )
@@ -175,10 +171,52 @@ class GuildMemberGear(commands.Cog):
         view = PagedGuildMembersView(members)
         await interaction.response.send_message(content=view.get_page_text(), view=view)
 
+    @app_commands.command(name="remove_member", description="Remove a guild member from the database (only server owner can use).")
+    @app_commands.describe(ingame_name="The in-game name of the member to remove.")
+    async def remove_member(self, interaction: discord.Interaction, ingame_name: str):
+        if interaction.user.id != interaction.guild.owner_id:
+            await interaction.response.send_message(
+                "You do not have permission to use this command. Only the server owner can remove members.",
+                ephemeral=True
+            )
+            return
+
+        guild_id = interaction.guild.id
+
+        if not self.db_connection.is_connected():
+            self.db_connection = db_manager.get_connection()
+
+        if not self.db_connection:
+            await interaction.response.send_message(
+                "Database connection could not be established. Please try again later.",
+                ephemeral=True
+            )
+            return
+
+        cursor = self.db_connection.cursor()
+        try:
+            cursor.execute("SELECT * FROM guild_members WHERE ingame_name = %s AND guild_id = %s", (ingame_name, guild_id))
+            member = cursor.fetchone()
+
+            if not member:
+                await interaction.response.send_message(
+                    f"No member found with the in-game name '{ingame_name}' in this guild.",
+                    ephemeral=True
+                )
+                return
+
+            cursor.execute("DELETE FROM guild_members WHERE ingame_name = %s AND guild_id = %s", (ingame_name, guild_id))
+            self.db_connection.commit()
+            await interaction.response.send_message(f"Member with in-game name '{ingame_name}' has been successfully removed.", ephemeral=True)
+        except mysql.connector.Error as err:
+            print(f"Database error: {err}")
+            await interaction.response.send_message("An error occurred while accessing the database. Please try again later.", ephemeral=True)
+        finally:
+            cursor.close()
+
 async def setup(bot):
     await bot.add_cog(GuildMemberGear(bot))
 
-# Improved database connection management with pooling and reconnection
 class DatabaseManager:
     def __init__(self, config):
         self.config = config
@@ -187,11 +225,10 @@ class DatabaseManager:
     def get_connection(self):
         try:
             connection = self.pool.get_connection()
-            connection.ping(reconnect=True)  # Ensure the connection is active
+            connection.ping(reconnect=True)
             return connection
         except mysql.connector.Error as err:
             print(f"Error: {err}")
             return None
 
-# Initialize the DatabaseManager
 db_manager = DatabaseManager(DB_CONFIG)
